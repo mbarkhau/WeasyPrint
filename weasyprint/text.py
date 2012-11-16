@@ -214,7 +214,6 @@ def create_layout(text, style, hinting, max_width):
 
     lines = []
     character_differences = []
-    print(repr(text))
     while text:
         layout = create_temp_layout(text, style, hinting, max_width)
         first_line = layout.get_line(0)
