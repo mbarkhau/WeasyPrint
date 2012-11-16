@@ -214,6 +214,7 @@ def create_layout(text, style, hinting, max_width):
 
     lines = []
     character_differences = []
+    print(repr(text))
     while text:
         layout = create_temp_layout(text, style, hinting, max_width)
         first_line = layout.get_line(0)
@@ -226,9 +227,10 @@ def create_layout(text, style, hinting, max_width):
         if number_of_lines > 1:
             if first_line_length == 0:
                 # TODO: Empty line, or just a line break, or something else?
-                lines.append('')
+                character = '\n'
+                lines.append(character)
                 character_differences.append(0)
-                text = text[1:]
+                text = text[len(character):]
                 continue
             next_text = (
                 text.encode('utf-8')[first_line_length:].decode('utf-8'))
