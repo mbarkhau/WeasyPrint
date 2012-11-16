@@ -144,9 +144,8 @@ def units_to_double(value):
     return value / Pango.SCALE
 
 
-def create_layout(text, style, hinting, max_width):
-    """Return an opaque Pango object to be passed to other functions
-    in this module.
+def create_temp_layout(text, style, hinting, max_width):
+    """Return an opaque Pango layout with default Pango line-breaks.
 
     :param text: Unicode
     :param style: a :class:`StyleDict` of computed values
@@ -172,7 +171,7 @@ def create_layout(text, style, hinting, max_width):
     set_text(layout, text)
     # Make sure that max_width * Pango.SCALE == max_width * 1024 fits in a
     # signed integer. Treat bigger values same as None: unconstrained width.
-    if max_width is not None and max_width < 2**21:
+    if max_width is not None and max_width < 2 ** 21:
         layout.set_width(units_from_double(max_width))
     word_spacing = style.word_spacing
     letter_spacing = style.letter_spacing
@@ -188,6 +187,85 @@ def create_layout(text, style, hinting, max_width):
             letter_spacing, markup)
         layout.set_attributes(parse_markup(markup))
     return layout
+
+
+def create_layout(text, style, hinting, max_width):
+    """Return an opaque Pango layout with intelligent line-breaks and
+    hyphenation to be passed to other functions in this module.
+
+    :param text: Unicode
+    :param style: a :class:`StyleDict` of computed values
+    :param hinting: whether to enable text hinting or not
+    :param max_width:
+        The maximum available width in the same unit as ``style.font_size``,
+        or ``None`` for unlimited width.
+
+    """
+    # Hyphenation and trailing spaces management
+
+    # Pango keeps trailing spaces at the end of words for line splitting,
+    # that's not what we want here
+
+    # TODO: remove the right trailing space-like characters instead of spaces,
+    # give this list of characters to rstrip
+
+    if not max_width:
+        return create_temp_layout(text, style, hinting, max_width), [0]
+
+    lines = []
+    character_differences = []
+    while text:
+        layout = create_temp_layout(text, style, hinting, max_width)
+        first_line = layout.get_line(0)
+        number_of_lines = layout.get_line_count()
+
+        # Try to add a word without its trailing space
+        first_line_length = first_line.length
+        first_line_text = (
+            text.encode('utf-8')[:first_line_length].decode('utf-8'))
+        if number_of_lines > 1:
+            if first_line_length == 0:
+                # TODO: Empty line, or just a line break, or something else?
+                lines.append('')
+                character_differences.append(0)
+                text = text[1:]
+                continue
+            next_text = (
+                text.encode('utf-8')[first_line_length:].decode('utf-8'))
+            if next_text:
+                next_word_layout = create_temp_layout(
+                    next_text, style, hinting, 0)
+                word_line = next_word_layout.get_line(0)
+                word_length = word_line.length
+                word_text = (
+                    next_text.encode('utf-8')[:word_length].decode('utf-8'))
+                stripped_word_text = word_text.rstrip(' ')
+                first_line_layout = create_temp_layout(
+                    first_line_text + stripped_word_text, style, hinting,
+                    max_width)
+                if first_line_layout.get_line_count() > 1:
+                    line_text = first_line_text.rstrip(' ')
+                    lines.append(line_text)
+                    character_differences.append(
+                        len(line_text) - len(first_line_text))
+                    text = next_text
+                else:
+                    lines.append(first_line_text + stripped_word_text)
+                    character_differences.append(
+                        len(stripped_word_text) - len(word_text))
+                    text = text[first_line_length + word_length:]
+        else:
+            line_text = first_line_text.rstrip(' ')
+            lines.append(line_text)
+            character_differences.append(
+                len(line_text) - len(first_line_text))
+            break
+
+    # TODO: hyphenation
+
+    return (
+        create_temp_layout('\n'.join(lines), style, hinting, max_width),
+        character_differences)
 
 
 def split_first_line(*args, **kwargs):
@@ -207,13 +285,13 @@ def split_first_line(*args, **kwargs):
                    newline characters.
 
     """
-    layout = create_layout(*args, **kwargs)
+    layout, character_differences = create_layout(*args, **kwargs)
     first_line = layout.get_line(0)
     length = first_line.length
     width, height = get_size(first_line)
     baseline = units_to_double(layout.get_iter().get_baseline())
     if layout.get_line_count() >= 2:
-        resume_at = layout.get_line(1).start_index
+        resume_at = layout.get_line(1).start_index + character_differences[0]
     else:
         resume_at = None
     return layout, length, resume_at, width, height, baseline
@@ -223,7 +301,7 @@ def line_widths(box, enable_hinting, width, skip=None):
     """Return the width for each line."""
     # TODO: without the lstrip, we get an extra empty line at the beginning. Is
     # there a better solution to avoid that?
-    layout = create_layout(
+    layout, _character_differences = create_layout(
         box.text[(skip or 0):].lstrip(), box.style, enable_hinting, width)
     for i in xrange(layout.get_line_count()):
         width, _height = get_size(layout.get_line(i))
