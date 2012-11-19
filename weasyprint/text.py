@@ -210,10 +210,11 @@ def create_layout(text, style, hinting, max_width):
     # give this list of characters to rstrip
 
     if not max_width:
-        return create_temp_layout(text, style, hinting, max_width), [0]
+        return create_temp_layout(text, style, hinting, max_width), [0], [0]
 
     lines = []
     character_differences = []
+    line_break_differences = []
     while text:
         layout = create_temp_layout(text, style, hinting, max_width)
         first_line = layout.get_line(0)
@@ -225,11 +226,12 @@ def create_layout(text, style, hinting, max_width):
             text.encode('utf-8')[:first_line_length].decode('utf-8'))
         if number_of_lines > 1:
             if first_line_length == 0:
-                # TODO: Empty line, or just a line break, or something else?
-                character = '\n'
-                lines.append(character)
+                # Replace the line break character by \n
+                character_length = layout.get_line(1).start_index
+                lines.append('\n')
                 character_differences.append(0)
-                text = text[len(character):]
+                line_break_differences.append(character_length - len('\n'))
+                text = text.encode('utf-8')[character_length:].decode('utf-8')
                 continue
             next_text = (
                 text.encode('utf-8')[first_line_length:].decode('utf-8'))
@@ -255,44 +257,51 @@ def create_layout(text, style, hinting, max_width):
                     character_differences.append(
                         len(stripped_word_text) - len(word_text))
                     text = text[first_line_length + word_length:]
+                line_break_differences.append(0)
         else:
-            line_text = first_line_text.rstrip(' ')
+            # TODO: first_line_text must be rstripped when it's the last line,
+            # add a parameter to this function to tell wheteher it's the last
+            # line or not
+            line_text = first_line_text  # .rstrip()
             lines.append(line_text)
             character_differences.append(
                 len(line_text) - len(first_line_text))
+            line_break_differences.append(0)
             break
 
     # TODO: hyphenation
 
     return (
         create_temp_layout('\n'.join(lines), style, hinting, max_width),
-        character_differences)
+        character_differences, line_break_differences)
 
 
 def split_first_line(*args, **kwargs):
     """Fit as much as possible in the available width for one line of text.
 
-    Return ``(length, width, height, resume_at)``.
+    Return ``(layout, length, resume_at, width, height, baseline)``.
 
-    ``show_line``: a closure that takes a cairo Context and draws the
-                   first line.
+    ``layout``: a cairo Context with the first line
     ``length``: length in UTF-8 bytes of the first line
-    ``width``: width in pixels of the first line
-    ``height``: height in pixels of the first line
-    ``baseline``: baseline in pixels of the first line
     ``resume_at``: The number of UTF-8 bytes to skip for the next line.
                    May be ``None`` if the whole text fits in one line.
                    This may be greater than ``length`` in case of preserved
                    newline characters.
+    ``width``: width in pixels of the first line
+    ``height``: height in pixels of the first line
+    ``baseline``: baseline in pixels of the first line
 
     """
-    layout, character_differences = create_layout(*args, **kwargs)
+    layout, char_diff, lb_diff = create_layout(*args, **kwargs)
     first_line = layout.get_line(0)
-    length = first_line.length
+    length = first_line.length - char_diff[0]
     width, height = get_size(first_line)
     baseline = units_to_double(layout.get_iter().get_baseline())
     if layout.get_line_count() >= 2:
-        resume_at = layout.get_line(1).start_index + character_differences[0]
+        resume_at = layout.get_line(1).start_index
+        # TODO: find why we may have len == 1
+        if len(lb_diff) > 1:
+            resume_at += lb_diff[1]
     else:
         resume_at = None
     return layout, length, resume_at, width, height, baseline
@@ -302,7 +311,7 @@ def line_widths(box, enable_hinting, width, skip=None):
     """Return the width for each line."""
     # TODO: without the lstrip, we get an extra empty line at the beginning. Is
     # there a better solution to avoid that?
-    layout, _character_differences = create_layout(
+    layout, _char_diff, _lb_diff = create_layout(
         box.text[(skip or 0):].lstrip(), box.style, enable_hinting, width)
     for i in xrange(layout.get_line_count()):
         width, _height = get_size(layout.get_line(i))
