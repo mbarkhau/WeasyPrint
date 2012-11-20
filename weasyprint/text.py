@@ -311,7 +311,7 @@ def line_widths(box, enable_hinting, width, skip=None):
     """Return the width for each line."""
     # TODO: without the lstrip, we get an extra empty line at the beginning. Is
     # there a better solution to avoid that?
-    layout, _char_diff, _lb_diff = create_layout(
+    layout = create_temp_layout(
         box.text[(skip or 0):].lstrip(), box.style, enable_hinting, width)
     for i in xrange(layout.get_line_count()):
         width, _height = get_size(layout.get_line(i))
