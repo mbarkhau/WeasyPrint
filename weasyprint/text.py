@@ -144,7 +144,7 @@ def units_to_double(value):
     return value / Pango.SCALE
 
 
-def create_temp_layout(text, style, hinting, max_width):
+def create_layout(text, style, hinting, max_width):
     """Return an opaque Pango layout with default Pango line-breaks.
 
     :param text: Unicode
@@ -189,34 +189,39 @@ def create_temp_layout(text, style, hinting, max_width):
     return layout
 
 
-def create_layout(text, style, hinting, max_width):
-    """Return an opaque Pango layout with intelligent line-breaks and
-    hyphenation to be passed to other functions in this module.
+def split_first_line(text, style, hinting, max_width):
+    """Fit as much as possible in the available width for one line of text.
 
-    :param text: Unicode
-    :param style: a :class:`StyleDict` of computed values
-    :param hinting: whether to enable text hinting or not
-    :param max_width:
-        The maximum available width in the same unit as ``style.font_size``,
-        or ``None`` for unlimited width.
+    Return ``(layout, length, resume_at, width, height, baseline)``.
+
+    ``layout``: a cairo Context with the first line
+    ``length``: length in UTF-8 bytes of the first line
+    ``resume_at``: The number of UTF-8 bytes to skip for the next line.
+                   May be ``None`` if the whole text fits in one line.
+                   This may be greater than ``length`` in case of preserved
+                   newline characters.
+    ``width``: width in pixels of the first line
+    ``height``: height in pixels of the first line
+    ``baseline``: baseline in pixels of the first line
 
     """
-    # Hyphenation and trailing spaces management
-
-    # Pango keeps trailing spaces at the end of words for line splitting,
-    # that's not what we want here
-
-    # TODO: remove the right trailing space-like characters instead of spaces,
-    # give this list of characters to rstrip
-
     if not max_width:
-        return create_temp_layout(text, style, hinting, max_width), [0], [0]
+        layout = create_layout(text, style, hinting, max_width)
+        first_line = layout.get_line(0)
+        length = first_line.length
+        width, height = get_size(first_line)
+        baseline = units_to_double(layout.get_iter().get_baseline())
+        if layout.get_line_count() >= 2:
+            resume_at = layout.get_line(1).start_index
+        else:
+            resume_at = None
+        return layout, length, resume_at, width, height, baseline
 
     lines = []
     character_differences = []
     line_break_differences = []
     while text:
-        layout = create_temp_layout(text, style, hinting, max_width)
+        layout = create_layout(text, style, hinting, max_width)
         first_line = layout.get_line(0)
         number_of_lines = layout.get_line_count()
 
@@ -236,14 +241,14 @@ def create_layout(text, style, hinting, max_width):
             next_text = (
                 text.encode('utf-8')[first_line_length:].decode('utf-8'))
             if next_text:
-                next_word_layout = create_temp_layout(
+                next_word_layout = create_layout(
                     next_text, style, hinting, 0)
                 word_line = next_word_layout.get_line(0)
                 word_length = word_line.length
                 word_text = (
                     next_text.encode('utf-8')[:word_length].decode('utf-8'))
                 stripped_word_text = word_text.rstrip(' ')
-                first_line_layout = create_temp_layout(
+                first_line_layout = create_layout(
                     first_line_text + stripped_word_text, style, hinting,
                     max_width)
                 if first_line_layout.get_line_count() > 1:
@@ -271,37 +276,16 @@ def create_layout(text, style, hinting, max_width):
 
     # TODO: hyphenation
 
-    return (
-        create_temp_layout('\n'.join(lines), style, hinting, max_width),
-        character_differences, line_break_differences)
-
-
-def split_first_line(*args, **kwargs):
-    """Fit as much as possible in the available width for one line of text.
-
-    Return ``(layout, length, resume_at, width, height, baseline)``.
-
-    ``layout``: a cairo Context with the first line
-    ``length``: length in UTF-8 bytes of the first line
-    ``resume_at``: The number of UTF-8 bytes to skip for the next line.
-                   May be ``None`` if the whole text fits in one line.
-                   This may be greater than ``length`` in case of preserved
-                   newline characters.
-    ``width``: width in pixels of the first line
-    ``height``: height in pixels of the first line
-    ``baseline``: baseline in pixels of the first line
-
-    """
-    layout, char_diff, lb_diff = create_layout(*args, **kwargs)
+    layout = create_layout('\n'.join(lines), style, hinting, max_width)
     first_line = layout.get_line(0)
-    length = first_line.length - char_diff[0]
+    length = first_line.length - character_differences[0]
     width, height = get_size(first_line)
     baseline = units_to_double(layout.get_iter().get_baseline())
     if layout.get_line_count() >= 2:
         resume_at = layout.get_line(1).start_index
         # TODO: find why we may have len == 1
-        if len(lb_diff) > 1:
-            resume_at += lb_diff[1]
+        if len(line_break_differences) > 1:
+            resume_at += line_break_differences[1]
     else:
         resume_at = None
     return layout, length, resume_at, width, height, baseline
@@ -311,7 +295,7 @@ def line_widths(box, enable_hinting, width, skip=None):
     """Return the width for each line."""
     # TODO: without the lstrip, we get an extra empty line at the beginning. Is
     # there a better solution to avoid that?
-    layout = create_temp_layout(
+    layout = create_layout(
         box.text[(skip or 0):].lstrip(), box.style, enable_hinting, width)
     for i in xrange(layout.get_line_count()):
         width, _height = get_size(layout.get_line(i))
