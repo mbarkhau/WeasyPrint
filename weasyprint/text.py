@@ -206,24 +206,17 @@ def split_first_line(text, style, hinting, max_width):
 
     """
     index = 0
-    if max_width is None:
-        beginning_text = text
-    elif max_width == 0:
+    beginning_text = text
+    if max_width == 0:
         if ' ' in text:
             beginning_text = ' '.join(text.split(' ')[0:2])
-        else:
-            beginning_text = text
-    else:
+    elif max_width is not None:
         expected_length = int(max_width / style.font_size * 2.5)
-        beginning_text = ''
-        if expected_length < 0:
-            beginning_text = text
-        elif expected_length == 0:
+        if expected_length == 0:
             if ' ' in text:
                 beginning_text = ' '.join(text.split(' ')[0:2])
-            else:
-                beginning_text = text
-        elif expected_length < len(text):
+        elif 0 < expected_length < len(text):
+            beginning_text = ''
             while index < len(text):
                 beginning_text += text[index:index + expected_length]
                 index += expected_length
@@ -231,8 +224,6 @@ def split_first_line(text, style, hinting, max_width):
                     beginning_text, style, hinting, max_width)
                 if layout.get_line_count() > 1:
                     break
-        else:
-            beginning_text = text
     if not index:
         layout = create_layout(beginning_text, style, hinting, max_width)
     first_line = layout.get_line(0)
