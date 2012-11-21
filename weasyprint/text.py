@@ -194,7 +194,7 @@ def split_first_line(text, style, hinting, max_width):
 
     Return ``(layout, length, resume_at, width, height, baseline)``.
 
-    ``layout``: a cairo Context with the first line
+    ``layout``: a pango Layout with the first line
     ``length``: length in UTF-8 bytes of the first line
     ``resume_at``: The number of UTF-8 bytes to skip for the next line.
                    May be ``None`` if the whole text fits in one line.
@@ -205,87 +205,43 @@ def split_first_line(text, style, hinting, max_width):
     ``baseline``: baseline in pixels of the first line
 
     """
-    if not max_width:
-        layout = create_layout(text, style, hinting, max_width)
-        first_line = layout.get_line(0)
-        length = first_line.length
-        width, height = get_size(first_line)
-        baseline = units_to_double(layout.get_iter().get_baseline())
-        if layout.get_line_count() >= 2:
-            resume_at = layout.get_line(1).start_index
+    index = 0
+    if max_width is None:
+        beginning_text = text
+    elif max_width == 0:
+        if ' ' in text:
+            beginning_text = ' '.join(text.split(' ')[0:2])
         else:
-            resume_at = None
-        return layout, length, resume_at, width, height, baseline
-
-    lines = []
-    character_differences = []
-    line_break_differences = []
-    while text:
-        layout = create_layout(text, style, hinting, max_width)
-        first_line = layout.get_line(0)
-        number_of_lines = layout.get_line_count()
-
-        # Try to add a word without its trailing space
-        first_line_length = first_line.length
-        first_line_text = (
-            text.encode('utf-8')[:first_line_length].decode('utf-8'))
-        if number_of_lines > 1:
-            if first_line_length == 0:
-                # Replace the line break character by \n
-                character_length = layout.get_line(1).start_index
-                lines.append('\n')
-                character_differences.append(0)
-                line_break_differences.append(character_length - len('\n'))
-                text = text.encode('utf-8')[character_length:].decode('utf-8')
-                continue
-            next_text = (
-                text.encode('utf-8')[first_line_length:].decode('utf-8'))
-            if next_text:
-                next_word_layout = create_layout(
-                    next_text, style, hinting, 0)
-                word_line = next_word_layout.get_line(0)
-                word_length = word_line.length
-                word_text = (
-                    next_text.encode('utf-8')[:word_length].decode('utf-8'))
-                stripped_word_text = word_text.rstrip(' ')
-                first_line_layout = create_layout(
-                    first_line_text + stripped_word_text, style, hinting,
-                    max_width)
-                if first_line_layout.get_line_count() > 1:
-                    line_text = first_line_text.rstrip(' ')
-                    lines.append(line_text)
-                    character_differences.append(
-                        len(line_text) - len(first_line_text))
-                    text = next_text
-                else:
-                    lines.append(first_line_text + stripped_word_text)
-                    character_differences.append(
-                        len(stripped_word_text) - len(word_text))
-                    text = text[first_line_length + word_length:]
-                line_break_differences.append(0)
+            beginning_text = text
+    else:
+        expected_length = int(max_width / style.font_size * 2)
+        beginning_text = ''
+        if expected_length < 0:
+            beginning_text = text
+        elif expected_length == 0:
+            if ' ' in text:
+                beginning_text = ' '.join(text.split(' ')[0:2])
+            else:
+                beginning_text = text
+        elif expected_length < len(text):
+            while index < len(text):
+                open('/tmp/test', 'a').write(str((index, len(text))) + '\n')
+                beginning_text += text[index:index + expected_length]
+                index += expected_length
+                layout = create_layout(
+                    beginning_text, style, hinting, max_width)
+                if layout.get_line_count() > 1:
+                    break
         else:
-            # TODO: first_line_text must be rstripped when it's the last line,
-            # add a parameter to this function to tell wheteher it's the last
-            # line or not
-            line_text = first_line_text  # .rstrip()
-            lines.append(line_text)
-            character_differences.append(
-                len(line_text) - len(first_line_text))
-            line_break_differences.append(0)
-            break
-
-    # TODO: hyphenation
-
-    layout = create_layout('\n'.join(lines), style, hinting, max_width)
+            beginning_text = text
+    if not index:
+        layout = create_layout(beginning_text, style, hinting, max_width)
     first_line = layout.get_line(0)
-    length = first_line.length - character_differences[0]
+    length = first_line.length
     width, height = get_size(first_line)
     baseline = units_to_double(layout.get_iter().get_baseline())
     if layout.get_line_count() >= 2:
         resume_at = layout.get_line(1).start_index
-        # TODO: find why we may have len == 1
-        if len(line_break_differences) > 1:
-            resume_at += line_break_differences[1]
     else:
         resume_at = None
     return layout, length, resume_at, width, height, baseline
