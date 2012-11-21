@@ -208,11 +208,7 @@ def split_first_line(text, style, hinting, max_width):
     layout = None
     if max_width:
         expected_length = int(max_width / style.font_size * 2.5)
-        if expected_length == 0:
-            # Only one word will fit here
-            if ' ' in text:
-                text = ' '.join(text.split(' ')[0:2])
-        elif 0 < expected_length < len(text):
+        if 0 < expected_length < len(text):
             # Try to use a small amount of text instead of the whole text
             layout = create_layout(
                 text[:expected_length], style, hinting, max_width)
