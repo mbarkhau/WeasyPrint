@@ -207,10 +207,7 @@ def split_first_line(text, style, hinting, max_width):
     """
     index = 0
     beginning_text = text
-    if max_width == 0:
-        if ' ' in text:
-            beginning_text = ' '.join(text.split(' ')[0:2])
-    elif max_width is not None:
+    if max_width is not None:
         expected_length = int(max_width / style.font_size * 2.5)
         if expected_length == 0:
             if ' ' in text:
