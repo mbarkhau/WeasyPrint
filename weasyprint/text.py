@@ -214,7 +214,7 @@ def split_first_line(text, style, hinting, max_width):
         else:
             beginning_text = text
     else:
-        expected_length = int(max_width / style.font_size * 2)
+        expected_length = int(max_width / style.font_size * 2.5)
         beginning_text = ''
         if expected_length < 0:
             beginning_text = text
@@ -225,7 +225,6 @@ def split_first_line(text, style, hinting, max_width):
                 beginning_text = text
         elif expected_length < len(text):
             while index < len(text):
-                open('/tmp/test', 'a').write(str((index, len(text))) + '\n')
                 beginning_text += text[index:index + expected_length]
                 index += expected_length
                 layout = create_layout(
